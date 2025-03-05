@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>倒數計時器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        input {
+            margin: 5px;
+            padding: 10px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        #timerDisplay {
+            font-size: 80px;
+            margin: 20px;
+            color: blue;
+        }
+        table {
+            margin: 20px 0;
+            border-collapse: collapse;
+            width: 300px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: center;
+        }
+        tr:hover {
+            background-color: #f0f0f0;
+            cursor: pointer;
+        }
+        .selected {
+            background-color: #d1e7dd;
+        }
+        .move-buttons {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        .move-buttons button {
+            margin: 0 10px;
+            padding: 5px 10px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            background-color: #ccc;
+        }
+        .move-buttons button:hover {
+            background-color: #bbb;
+        }
+        .delete-button {
+            background-color: transparent;
+            border: none;
+            color: red;
+            cursor: pointer;
+            font-size: 20px;
+            margin-left: 10px;
+        }
+        #soundSelectButton {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        #soundSelectButton:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>倒數計時器</h1>
+    <div>
+        <input type="text" id="presetName" placeholder="命名（可選）">
+        <input type="number" id="minutes" placeholder="分" min="0" max="999">
+        <input type="number" id="seconds" placeholder="秒" min="0" max="59">
+        <button id="saveButton">儲存</button>
+        <button id="resetButton">歸零</button>
+    </div>
+    <div>
+        <table id="presetTimesTable">
+            <thead>
+                <tr>
+                    <th>選定</th>
+                    <th>名稱</th>
+                    <th>時間</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- 儲存時間紀錄將顯示在這裡 -->
+            </tbody>
+        </table>
+        <div class="move-buttons">
+            <button id="moveUpButton">▲</button>
+            <button id="moveDownButton">▼</button>
+            <button class="delete-button" id="deleteButton">X</button>
+        </div>
+    </div>
+    <div class="wrapper">
+        <button id="startButton">開始</button>
+        <button id="pauseButton">暫停</button>
+        <button id="cancelButton">取消</button>
+    </div>
+    <div id="timerDisplay">00:00</div>
+
+    <!-- 這是鈴聲選擇的部分 -->
+    <div>
+        <label for="alarmSelect" id="soundSelectButton">選擇鈴聲</label>
+        <input type="file" id="alarmSelect" accept="audio/*" style="display:none;">
+    </div>
+
+    <audio id="alarmSound" preload="auto"></audio>
+
+    <script>
+        let timer
+        let remainingTime
+        let isPaused = false
+        const timerDisplay = document.getElementById('timerDisplay')
+        const minutesInput = document.getElementById('minutes')
+        const secondsInput = document.getElementById('seconds')
+        const presetNameInput = document.getElementById('presetName')
+        const presetTimesTable = document.getElementById('presetTimesTable').querySelector('tbody')
+        const alarmSound = document.getElementById('alarmSound')
+        const alarmSelect = document.getElementById('alarmSelect')
+
+        // 加載保存的時間設定
+        const loadPresetTimes = () => {
+            const savedTimes = JSON.parse(localStorage.getItem('presetTimes')) || []
+            presetTimesTable.innerHTML = ''
+
+            savedTimes.forEach((time, index) => {
+                const row = document.createElement('tr')
+                row.innerHTML = `
+                    <td><input type="radio" name="selectedTime" value="${index}"></td>
+                    <td>${time.name || ''}</td>
+                    <td>${time.label}</td>
+                `
+                presetTimesTable.appendChild(row)
+            })
+        }
+
+        // 初始加載已保存的設定
+        loadPresetTimes()
+
+        // 儲存時間設定
+        document.getElementById('saveButton').addEventListener('click', () => {
+            const minutes = minutesInput.value.padStart(2, '0')
+            const seconds = secondsInput.value.padStart(2, '0')
+            const name = presetNameInput.value.trim() || ''
+
+            if (minutes === "00" && seconds === "00") {
+                alert("請輸入有效的時間。")
+                return
+            }
+
+            const savedTimes = JSON.parse(localStorage.getItem('presetTimes')) || []
+            savedTimes.push({ value: `${minutes}:${seconds}`, label: `${minutes} 分 ${seconds} 秒`, name })
+
+            if (savedTimes.length > 9) {
+                savedTimes.shift()
+            }
+
+            localStorage.setItem('presetTimes', JSON.stringify(savedTimes))
+            loadPresetTimes()
+
+            minutesInput.value = ''
+            secondsInput.value = ''
+            presetNameInput.value = ''
+        })
+
+        // 重設
+        document.getElementById('resetButton').addEventListener('click', () => {
+            if (confirm('您確定要將時間重設為 00:00 嗎？')) {
+                minutesInput.value = ''
+                secondsInput.value = ''
+                presetNameInput.value = ''
+                timerDisplay.textContent = '00:00'
+                remainingTime = 0
+            }
+        })
+
+        // 開始計時
+        document.getElementById('startButton').addEventListener('click', () => {
+            const selectedRadio = document.querySelector('input[name="selectedTime"]:checked')
+            if (selectedRadio) {
+                const selectedIndex = selectedRadio.value
+                const savedTimes = JSON.parse(localStorage.getItem('presetTimes')) || []
+                const selectedTime = savedTimes[selectedIndex]
+                const [minutes, seconds] = selectedTime.value.split(':').map(Number)
+
+                remainingTime = (minutes * 60) + seconds
+
+                clearInterval(timer)
+                isPaused = false
+
+                timer = setInterval(() => {
+                    if (!isPaused) {
+                        const minutesLeft = Math.floor(remainingTime / 60)
+                        const secondsLeft = remainingTime % 60
+
+                        timerDisplay.textContent = 
+                            `${String(minutesLeft).padStart(2, '0')}:${String(secondsLeft).padStart(2, '0')}`
+
+                        if (remainingTime <= 0) {
+                            clearInterval(timer)
+                            alarmSound.play()  // 播放選擇的鈴聲
+                        }
+
+                        remainingTime--
+                    }
+                }, 1000)
+            } else {
+                alert("請選擇一個已儲存的時間設定。")
+            }
+        })
+
+        // 暫停/繼續
+        document.getElementById('pauseButton').addEventListener('click', () => {
+            isPaused = !isPaused
+            document.getElementById('pauseButton').textContent = isPaused ? '繼續' : '暫停'
+        })
+
+        // 取消計時
+        document.getElementById('cancelButton').addEventListener('click', () => {
+            clearInterval(timer)
+            timerDisplay.textContent = '00:00'
+            remainingTime = 0
+            isPaused = false
+            document.getElementById('pauseButton').textContent = '暫停'
+        })
+
+        // 刪除時間設定
+        document.getElementById('deleteButton').addEventListener('click', () => {
+            const selectedRadio = document.querySelector('input[name="selectedTime"]:checked')
+            if (selectedRadio) {
+                const index = selectedRadio.value
+                if (confirm('確定要刪除這個時間設定嗎？')) {
+                    const savedTimes = JSON.parse(localStorage.getItem('presetTimes')) || []
+                    savedTimes.splice(index, 1)
+                    localStorage.setItem('presetTimes', JSON.stringify(savedTimes))
+                    loadPresetTimes()
+                }
+            } else {
+                alert("請先選擇一個時間設定。")
+            }
+        })
+
+        // 儲存並載入鈴聲檔案
+        alarmSelect.addEventListener('change', (event) => {
+            const file = event.target.files[0]
+            if (file) {
+                const reader = new FileReader()
+                reader.onload = function(e) {
+                    const soundDataURL = e.target.result
+                    alarmSound.src = soundDataURL  // 將鈴聲設定為檔案的Data URL
+
+                    // 儲存選擇的鈴聲到localStorage
+                    localStorage.setItem('alarmSound', soundDataURL)
+                }
+                reader.readAsDataURL(file)
+            }
+        })
+
+        // 載入已保存的鈴聲
+        const savedAlarmSound = localStorage.getItem('alarmSound')
+        if (savedAlarmSound) {
+            alarmSound.src = savedAlarmSound  // 如果有已保存的鈴聲，載入
+        }
+    </script>
+</body>
+</html>
+
